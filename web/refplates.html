@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script type="module">
+import * as T from "./toon.js";
+import * as C from "./castdefs.js";
+// Reference plates for Google Flow: single character on a PLAIN WHITE background.
+// Design space of bodyFrontX/bodySideX is 600 x 1000, soles at y = 975, centre x = 300.
+// Full body spans roughly y 170 (pagri top) .. 975 (soles), x ~180..420.
+// Head spans roughly y 170..430, x ~170..430.
+//   ?p=front&v=y  full-body front, young Jadhav
+//   ?p=head&v=y   tight headshot, young Jadhav
+//   ?p=side&v=y   full-body profile (facing screen-right), young Jadhav
+//   v=o           same plates for old Jadhav (JADHAV_O)
+const q = new URLSearchParams(location.search);
+const plate = q.get("p") || "front";
+const variant = q.get("v") || "y";
+const outfit = variant === "o" ? C.JADHAV_O : C.JADHAV_Y;
+const g = document.getElementById("c").getContext("2d");
+g.fillStyle = "#ffffff"; g.fillRect(0, 0, 1080, 1920);
+const L = -Math.PI * 2 / 3; // same light angle as charsheet / story (seed 3, as in the video)
+const draw = (fn, tx, ty, s) => {
+  g.save();
+  g.translate(tx, ty); g.scale(s, s);
+  fn(new T.Pen(g));
+  g.restore();
+};
+const frontOpts = { expr: "calm", armL: "hang", armR: "hang", seed: 3, light: L };
+if (plate === "front") {
+  draw((p) => T.bodyFrontX(p, outfit, frontOpts), -30, 10, 1.9);
+} else if (plate === "head") {
+  // Looser zoom (3.2x) so the pagri knot + tail (design x ~132) stay inside the frame.
+  draw((p) => T.bodyFrontX(p, outfit, frontOpts), -420, 0, 3.2);
+} else if (plate === "side") {
+  draw((p) => T.bodySideX(p, outfit, { mode: "stand", expr: "calm", seed: 3, light: L }), -30, 10, 1.9);
+}
+window.done = true;
+</script></body></html>

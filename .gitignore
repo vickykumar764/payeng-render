@@ -1,0 +1,9 @@
+frames/
+frames-v2/
+node_modules/
+out/
+stills/
+work-v2/
+*.log
+*.wav
+__pycache__/
