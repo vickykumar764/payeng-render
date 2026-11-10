@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-  workflows: write
 jobs:
   unpack:
     runs-on: ubuntu-latest
@@ -14,8 +13,8 @@ jobs:
           unzip -o payeng-render-upload.zip
           cp -r payeng-render/. .
           rm -rf payeng-render payeng-render-upload.zip .github/workflows/unpack-kit.yml
+          rm -f .github/workflows/render-test.yml .github/workflows/render.yml
           ls -la
-          ls .github/workflows
       - name: Commit extracted files
         run: |
           git config user.name "vickykumar764"
