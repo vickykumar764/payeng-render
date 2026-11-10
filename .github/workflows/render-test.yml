@@ -1,0 +1,59 @@
+# 50-frame test for the Payeng three.js render on GitHub Actions.
+# Frames 0-49 only (the opening shot; hook frame f0000 is in it).
+# See render-platforms-setup/test-plan.md for pass criteria.
+# Run: Actions tab -> "Render test (50 frames)" -> Run workflow.
+# After it passes, use render.yml (20-job full video, frames 0-2665).
+name: Render test (50 frames)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium --with-deps
+
+      - name: Install three.js for the scene
+        run: npm --prefix web ci
+
+      - name: Render frames 0-49
+        env:
+          RESUME: "1"
+        run: |
+          START_TS=$(date +%s)
+          echo "render start: $(date -u +%FT%TZ)"
+          node render.mjs frames "0-49"
+          END_TS=$(date +%s)
+          echo "render wall seconds (incl. page load): $((END_TS - START_TS))"
+          echo "render end: $(date -u +%FT%TZ)"
+
+      - name: Verify frames
+        run: |
+          COUNT=$(ls frames/f*.jpg | wc -l)
+          BAD=$(find frames -name 'f*.jpg' -size -1000c | wc -l)
+          echo "frames on disk: $COUNT (expected 50), tiny/corrupt: $BAD"
+          file frames/f0000.jpg frames/f0025.jpg frames/f0049.jpg
+          ls -la frames | head -8
+          test "$COUNT" = "50"
+          test "$BAD" = "0"
+
+      - name: Upload frames artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frames-test-50
+          path: frames/f*.jpg
+          retention-days: 1
+          if-no-files-found: error
