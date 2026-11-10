@@ -1,0 +1,98 @@
+# Render the cartoon-audio-short kit on GitHub Actions — 20-job matrix
+#
+# UNTESTED — per-frame speed on Actions runners is UNVERIFIED. The 50-frame
+# test (see ../test-plan.md) must be run before a full video is committed.
+#
+# Repo layout required (commit the kit at the repo root):
+#   render.mjs            (project root; serves web/ on a random port)
+#   web/                  (three.js scene: index.html, main.js, story.js, ...)
+#   web/package.json      (three ^0.160.0) + web/package-lock.json
+#
+# How it works:
+#   - 20 matrix jobs run concurrently (Free-plan limit).
+#   - Job i renders frames start=i*134 .. min(start+133, 2665).
+#     Jobs 0-18 render 134 frames; job 19 renders 120 (2546-2665).
+#   - At the measured Kaggle speed (6.1 s/frame, ASSUMED here) each job is
+#     ~817 s of rendering + ~3-5 min setup = ~18-20 min wall time.
+#   - Each job uploads its frames as an artifact (retention 1 day — total
+#     artifacts ~530 MB vs 500 MB free storage, so download promptly).
+#   - Download all 20 artifacts, merge into frames/, run finish.sh locally.
+#
+# To run a full video: Actions tab -> "Render video" -> Run workflow.
+# To re-run ONE failed shard: Run workflow with shard = that job number.
+name: Render video
+
+on:
+  workflow_dispatch:
+    inputs:
+      shard:
+        description: "Single shard to render (0-19). Leave empty for all 20 shards."
+        required: false
+        default: ""
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      # inputs.shard is a string; matrix.shard is a number, so stringify
+      # the matrix value before comparing.
+      - name: Skip if single-shard run and this is not the shard
+        if: inputs.shard != '' && inputs.shard != format('{0}', matrix.shard)
+        run: echo "Skipping shard ${{ matrix.shard }} (only shard ${{ inputs.shard }} requested)"
+
+      - name: Set up Node.js 20
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + Chromium
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium --with-deps
+
+      - name: Install three.js for the scene
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        run: npm --prefix web ci
+
+      - name: Compute frame range
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        id: range
+        run: |
+          START=$(( ${{ matrix.shard }} * 134 ))
+          END=$(( START + 133 ))
+          if [ "$END" -gt 2665 ]; then END=2665; fi
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "end=$END" >> "$GITHUB_OUTPUT"
+          echo "expected=$(( END - START + 1 ))" >> "$GITHUB_OUTPUT"
+          echo "Shard ${{ matrix.shard }}: frames $START-$END"
+
+      - name: Render frames
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        env:
+          RESUME: "1"
+        run: node render.mjs frames "${{ steps.range.outputs.start }}-${{ steps.range.outputs.end }}"
+
+      - name: Verify frames
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        run: |
+          COUNT=$(ls frames/f*.jpg | wc -l)
+          BAD=$(find frames -name 'f*.jpg' -size -1000c | wc -l)
+          echo "frames on disk: $COUNT (expected ${{ steps.range.outputs.expected }}), tiny/corrupt: $BAD"
+          test "$COUNT" = "${{ steps.range.outputs.expected }}"
+          test "$BAD" = "0"
+
+      - name: Upload frames artifact
+        if: inputs.shard == '' || inputs.shard == format('{0}', matrix.shard)
+        uses: actions/upload-artifact@v4
+        with:
+          name: frames-shard-${{ matrix.shard }}
+          path: frames/f*.jpg
+          retention-days: 1
+          if-no-files-found: error
